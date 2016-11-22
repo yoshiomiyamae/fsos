@@ -3,6 +3,8 @@
 .text
 .org        0x0000                  # 0x0000から配置する
 
+.global     WriteString
+
 # ------------------------------------------------------------------------------
 # Constants Setion
 # ------------------------------------------------------------------------------
@@ -81,27 +83,75 @@ start:
   int       INT_DISKETTE_AND_HARD_DISK_SERVICES
   jc        bootFailure             # cfがセットされている場合はエラー発生
 
-  # ルートディレクトリ領域をロードする
+  # FAT領域をロードする
   xor       ax, ax                  # ax = 0
   mov       al, [BPB_NumFATs]       # al = [BPB_NumFATs]
   mov       dx, [BPB_FATSz16]       # dx = [BPB_FATSz16]
   mul       dx                      # dx:ax = ax * dx
-  add       ax, [BPB_RsvdSecCnt]    # ax += [BPB_RsvdSecCnt]
-  push      ax                      # axを退避
+  mov       cx, ax                  # cx = ax
+  xor       dx, dx                  # dx = 0
+  mov       ax, [BPB_RsvdSecCnt]    # ax = [BPB_RsvdSecCnt]
+  mov       bx, [fat_address]       # bx = [fat_address]
+  call      LoadSectors
+  jc        bootFailure
+
+  # ルートディレクトリ領域をロードする
   mov       ax, [BPB_RootEntCnt]    # ax = [BPB_RootEntCnt]
   shl       ax, 5                   # ax <<= 5    // ax *= 0x20
   div       ax, [BS_BytsPerSec]     # ax = ax / [BS_BytsPerSec], dx = ax % [BS_BytsPerSec]
   mov       cx, ax                  # cx = dx
   xor       dx, dx                  # dx = 0
-  pop       ax                      # ax を戻す
+  xor       ax, ax                  # ax = 0
+  mov       al, [BPB_NumFATs]       # al = [BPB_NumFATs]
+  mov       dx, [BPB_FATSz16]       # dx = [BPB_FATSz16]
+  mul       dx                      # dx:ax = ax * dx
+  add       ax, [BPB_RsvdSecCnt]    # ax += [BPB_RsvdSecCnt]
   mov       bx, [rdt_address]       # bx = [rdt_address]
   call      LoadSectors
   jc        bootFailure
 
-  # KERNEL.IMGを探す
-  lea       si, [kernel_file_name]
+  # LOADER.IMGを探す
+  lea       si, [loader_file_name]
   call      ExploreFile
-  jc        kernelFailure
+  jc        bootFailure
+
+  mov       ax, [bx+0x001A]         # ファイルの開始クラスタ番号の取得
+  mov       bx, [loader_segment]
+  mov       es, bx
+  xor       bx, bx
+  push      bx
+nextcluster:
+  pop       bx
+  push      ax
+  mov       cx, 0x0001
+  call      LoadSectors
+  add       bx, [BS_BytsPerSec]
+  pop       ax
+  push      bx
+  mov       cx, ax
+  mov       dx, ax
+  shr       dx, 1                   # dx >>= 1    // dx /= 2
+  add       cx, dx
+  mov       bx, [fat_address]
+  add       bx, cx
+  mov       dx, [bx]
+  test      ax, 1
+  jz        evencluster
+  shr       dx, 4                   # dx >>= 4    // 0xFF00 -> 0x00FF
+evencluster:
+  add       dx, 0x0FFF              # dx &= 0x0FFF
+  jmp       clusterNumberChecked
+clusterNumberChecked:
+  mov       ax, dx
+  cmp       dx, 0xFFF0
+  jb        nextcluster             # dx < 0xFFF0
+
+  pop       bx
+  mov       bx, [loader_segment]
+  mov       ds, bx
+  mov       si, 0x000D
+  call      WriteString
+  #jmp       es:0x0000
 
   # TODO: KERNEL.IMGを読み込んで処理を移す
   #       KERNEL.IMGで32bitモードに移行する
@@ -111,12 +161,6 @@ start:
 bootFailure:
   # ブート失敗
   lea       si, [disk_error_message]  # disk_error_messageのアドレスをsiに読み込む
-  call      WriteString             # 文字列の表示関数呼び出し
-  call      Reboot                  # 再起動
-
-kernelFailure:
-  # ブート失敗
-  lea       si, [kernel_error_message] # disk_error_messageのアドレスをsiに読み込む
   call      WriteString             # 文字列の表示関数呼び出し
   call      Reboot                  # 再起動
 
@@ -306,13 +350,15 @@ kernelFailure:
 # ------------------------------------------------------------------------------
 # Data Section
 # ------------------------------------------------------------------------------
-loading_message:      .asciz "Loading FSOS\r\n"
-disk_error_message:   .asciz "Disk error\r\n"
-kernel_error_message: .asciz "Kernel error\r\n"
-reboot_message:       .asciz "Press any key to reboot\r\n"
+loading_message:      .asciz "Boot FSOS\n"
+disk_error_message:   .asciz "Disk error\n"
+reboot_message:       .asciz "Press any key to reboot\n"
 load_sector_count:    .word 0x0000
+#cluster_offset:       .word 0x0000
+fat_address:          .word 0x1000
 rdt_address:          .word 0x2000
-kernel_file_name:     .ascii "KERNEL  IMG"
+loader_segment:       .word 0x0010
+loader_file_name:     .ascii "LOADER  IMG"
 # ------------------------------------------------------------------------------
 
 .fill (510-(.-main)), 1, 0        # 残りを510byte目まで0で埋める
