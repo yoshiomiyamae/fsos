@@ -1,0 +1,17 @@
+services:
+  fsos-dev:
+    container_name: fsos-dev
+    build:
+      context: ./
+      dockerfile: .devcontainer/Dockerfile
+    networks:
+      - default
+    volumes:
+      - ./:/workspaces/
+      - ~/.gitconfig:/home/vscode/.gitconfig
+      - ~/.ssh/:/home/vscode/.ssh/
+    tty: true
+
+networks:
+  default:
+    driver: bridge
