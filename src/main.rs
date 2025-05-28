@@ -12,24 +12,19 @@ pub extern "C" fn _start() -> ! {
     println!("Hello World{}", "!");
 
     fsos::init();
-    fn stack_overflow() {
-        stack_overflow();
-    }
-
-    stack_overflow();
 
     #[cfg(test)]
     test_main();
     
     println!("It did not crash!");
-    loop {}
+    fsos::hlt_loop();
 }
 
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    loop {}
+    fsos::hlt_loop();
 }
 
 #[cfg(test)]
