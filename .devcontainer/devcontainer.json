@@ -11,7 +11,8 @@
 			"extensions": [
 				"rust-lang.rust-analyzer",
 				"JScearcy.rust-doc-viewer",
-				"ms-vscode.makefile-tools"
+				"ms-vscode.makefile-tools",
+				"mhutchie.git-graph"
 			]
 		}
 	},
